@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-dark.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/plugins/autoloader/prism-autoloader.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Заголовок -->
+        <!--
+        <header class="header">
+            <h1>Local AI</h1>
+            <div class="status">
+                {% if ollama_running %}
+                    <span class="status-online">🟢 Ollama работает</span>
+                {% else %}
+                    <span class="status-offline">🔴 Ollama не работает</span>
+                {% endif %}
+            </div>
+        </header>
+        -->
+
+        <!-- Панель управления -->
+        <div class="controls">
+            <div class="model-selector">
+                <label for="model-select">Модель:</label>
+                <select id="model-select">
+                    {% for model in models %}
+                        <option value="{{ model }}">{{ model }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button id="clear-btn" class="btn btn-secondary clear-btn" title="Очистить чат">
+                <img src="/static/images/bucket.png" alt="Очистить" style="width:18px;height:18px;">
+            </button>
+        </div>
+
+        <!-- Область чата -->
+        <div class="chat-container">
+            <div id="messages" class="messages"></div>
+            
+            <!-- Индикатор печати -->
+            <div id="typing-indicator" class="typing-indicator" style="display: none;">
+                <div class="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <span>AI думает...</span>
+            </div>
+        </div>
+
+        <!-- Поле ввода -->
+        <div class="input-container">
+            <div class="input-wrapper">
+                <textarea id="message-input" placeholder="Напишите ваше сообщение..." rows="1"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- Уведомления -->
+    <div id="notifications" class="notifications"></div>
+
+    <!-- Модальное окно подтверждения -->
+    <div id="confirm-modal" class="modal hidden">
+        <div class="modal-content">
+            <p id="confirm-message">Вы уверены?</p>
+            <div class="modal-actions">
+                <button id="confirm-ok" class="btn btn-danger">Очистить</button>
+                <button id="confirm-cancel" class="btn btn-secondary">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html> 
