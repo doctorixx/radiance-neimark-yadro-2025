@@ -17,6 +17,18 @@
 ```shell
 docker compose up --build
 ```
+- добавить базу данных postgres
+данные:
+
+login: postgres
+
+password: admin
+
+host: host.docker.internal:25565
+
+TLS/SSL Mode: disabled
+
+- импортировать dashboard из `_monitoring/grafana_dashboard_export.json`
 
 ## Database
 
