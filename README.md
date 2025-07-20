@@ -38,4 +38,14 @@ python3 app.py
 ```
 ## Frontendback service
 
-...
+
+## LangFlow
+Для запуска RAG-хранилища:
+ - Импортировать файл /langflow/Vector Store RAG.json
+ - Добавить токены в места, где используется MistralAI
+ - Добавить файлы из /langflow/files в RAG-хранилище в модуле File
+ - Запустить модуль ChromaDB, через который данные загружаются
+
+Для запуска агента по определению категорий запросов:
+ - Импортировать файл /langflow/Category.json
+ - Добавить токены в места, где используется MistralAI
