@@ -1,4 +1,4 @@
 Flask==2.3.3
 Werkzeug==2.3.7
-psycopg2~=2.9.10
+psycopg2-binary
 flasgger~=0.9.7.1
