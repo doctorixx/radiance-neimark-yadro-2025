@@ -1,5 +1,12 @@
 > Radiance team
 
+# Работа с кодом
+
+- Запрет на push в main (Security)
+- CI для тестов кода (линтеры)
+![img.png](images/1122.png)
+- Задачи организованы в Github Project (По методологии kanban)
+![img.png](images/img.png)
 
 
 # Запуск
@@ -13,7 +20,7 @@ docker compose up --build
 
 ## Database
 
-- перейти в feedback service
+- перейти в feedback_service
 - запустить
 ```shell
 docker compose up --build
