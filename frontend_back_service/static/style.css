@@ -57,7 +57,7 @@
 
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: url('/static/images/backround.jpg');
+    background: url('/frontend_back_service/staticnd_back_service/static/images/backround.jpg');
     background-attachment: fixed;
     background-repeat: no-repeat;
     background-size: cover;
