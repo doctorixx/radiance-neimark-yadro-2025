@@ -52,9 +52,9 @@ python3 app.py
  - Перейти в директорию /streamlit
  - Создать виртуальное окружение venv
  - Установить зависимости
-   ```shell
-   pip install requirements.txt
-   ```
+```shell
+pip install requirements.txt
+```
  - Добавить конфигурационный файл config.env со следующими данными
 ```
 LANGFLOW_API_KEY=<<КЛЮЧ API LANGFLOW>>
