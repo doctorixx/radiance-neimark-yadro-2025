@@ -14,9 +14,9 @@ def send_feedback(_answer: Answer):
         headers={
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "Authorization": "Bearer {}".format(os.getenv("FEEDBACK_TOKEN"))
+            "Authorization": "Bearer {}".format(os.getenv("FEEDBACK_TOKEN")),
         },
-        data=_answer.model_dump_json()
+        data=_answer.model_dump_json(),
     )
     print("send_feedback")
     return AnswerUpdate.model_validate(response.json())
@@ -29,15 +29,17 @@ def change_feedback(_answer_update: AnswerUpdate):
         headers={
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "Authorization": f"Bearer {os.getenv('FEEDBACK_TOKEN')}"
+            "Authorization": f"Bearer {os.getenv('FEEDBACK_TOKEN')}",
         },
-        data=json.dumps({
-            "answer": _answer_update.answer,
-            "category": _answer_update.category,
-            "score": _answer_update.score,
-            "user_query": _answer_update.user_query,
-            "version": _answer_update.version,
-        })
+        data=json.dumps(
+            {
+                "answer": _answer_update.answer,
+                "category": _answer_update.category,
+                "score": _answer_update.score,
+                "user_query": _answer_update.user_query,
+                "version": _answer_update.version,
+            }
+        ),
     )
 
     print("change_feedback")
@@ -49,13 +51,13 @@ def change_feedback(_answer_update: AnswerUpdate):
     return AnswerUpdate.model_validate(answer)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     data = {
-        'id': 9,
-        'answer': 'Привет! Рад помочь. Если у тебя есть вопросы по Tatlin.Unified, не стесняйся задавать. Я постараюсь предоставить максимально полезную информацию, учитывая твой уровень знаний и раскрыв смежные темы.\n\nЕсли у тебя есть конкретные вопросы или темы, которые тебя интересуют, дай знать, и я постараюсь помочь с максимально полным и исчерпывающим ответом.\n\n---\n\nКонтакты YADRO:\n\n• 123376, г. Москва, ул. Рочдельская 15, стр. 15\n\n• +7 495 540 50 55\n\n• info@yadro.com\n\nТехническая поддержка:\n\n• +7 800 777 06 11\n\n• support@yadro.com',
-        'category': 'Эксплуатация',
-        'score': 1,
-        'user_query': 'Привет',
-        'version': 'v1.0'
+        "id": 9,
+        "answer": "Привет! Рад помочь. Если у тебя есть вопросы по Tatlin.Unified, не стесняйся задавать. Я постараюсь предоставить максимально полезную информацию, учитывая твой уровень знаний и раскрыв смежные темы.\n\nЕсли у тебя есть конкретные вопросы или темы, которые тебя интересуют, дай знать, и я постараюсь помочь с максимально полным и исчерпывающим ответом.\n\n---\n\nКонтакты YADRO:\n\n• 123376, г. Москва, ул. Рочдельская 15, стр. 15\n\n• +7 495 540 50 55\n\n• info@yadro.com\n\nТехническая поддержка:\n\n• +7 800 777 06 11\n\n• support@yadro.com",
+        "category": "Эксплуатация",
+        "score": 1,
+        "user_query": "Привет",
+        "version": "v1.0",
     }
     change_feedback(AnswerUpdate(**data))

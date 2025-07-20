@@ -11,7 +11,12 @@ from categorize import categorize
 dotenv.load_dotenv("../config.env")
 
 
-def run_langflow_api(input_message: str, session_id: str, output_type: str = "chat", input_type: str = "chat") -> dict:
+def run_langflow_api(
+    input_message: str,
+    session_id: str,
+    output_type: str = "chat",
+    input_type: str = "chat",
+) -> dict:
     try:
         api_key = os.environ["LANGFLOW_API_KEY"]
         flow = os.environ["YADRO_FLOW"]
@@ -22,24 +27,16 @@ def run_langflow_api(input_message: str, session_id: str, output_type: str = "ch
         )
 
     url = f"http://localhost:7860/api/v1/run/{flow}"
-    headers = {
-        "Content-Type": "application/json",
-        "x-api-key": api_key
-    }
+    headers = {"Content-Type": "application/json", "x-api-key": api_key}
     payload = {
         "output_type": output_type,
         "input_type": input_type,
         "input_value": input_message,
-        "session_id": session_id
+        "session_id": session_id,
     }
 
     try:
-        response = requests.post(
-            url,
-            json=payload,
-            headers=headers,
-            timeout=120
-        )
+        response = requests.post(url, json=payload, headers=headers, timeout=120)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
@@ -53,15 +50,20 @@ def extract_response_text(api_response: dict) -> str:
     Extract text from LangFlow API response
     """
     try:
-        return api_response['outputs'][0]['outputs'][0]['results']['message']['text'].strip()
+        return api_response["outputs"][0]["outputs"][0]["results"]["message"][
+            "text"
+        ].strip()
     except (KeyError, IndexError, TypeError):
         try:
-            return api_response['outputs'][0]['outputs'][0]['outputs']['message']['message'].strip()
+            return api_response["outputs"][0]["outputs"][0]["outputs"]["message"][
+                "message"
+            ].strip()
         except (KeyError, IndexError, TypeError):
+
             def find_text(data):
                 if isinstance(data, dict):
                     for k, v in data.items():
-                        if k == 'text' and isinstance(v, str):
+                        if k == "text" and isinstance(v, str):
                             return v
                         result = find_text(v)
                         if result:
@@ -78,7 +80,9 @@ def extract_response_text(api_response: dict) -> str:
 
 
 # Callback-функции для обработки оценок
-def set_rating(message_key, rating, _answer: str, _question: str, _category: str) -> None:
+def set_rating(
+    message_key, rating, _answer: str, _question: str, _category: str
+) -> None:
     st.session_state.ratings[message_key] = rating
     answer = _answer
     score = 1 if rating == "like" else 0
@@ -89,14 +93,16 @@ def set_rating(message_key, rating, _answer: str, _question: str, _category: str
     answer_id = st.session_state.feedbacks.get(message_key)
     print(answer_id)
 
-    print({
-        "id": answer_id,
-        "answer": answer,
-        "category": category,
-        "score": score,
-        "user_query": user_query,
-        "version": version,
-    })
+    print(
+        {
+            "id": answer_id,
+            "answer": answer,
+            "category": category,
+            "score": score,
+            "user_query": user_query,
+            "version": version,
+        }
+    )
     if answer_id:
         params = AnswerUpdate.model_validate(
             {
@@ -218,7 +224,9 @@ if prompt := st.chat_input("Ваше сообщение"):
         # Отображаем только последнее сообщение AI
         last_message = st.session_state.messages[-1]
 
-        message_key = f"{st.session_state.session_id}_{len(st.session_state.messages) - 1}"
+        message_key = (
+            f"{st.session_state.session_id}_{len(st.session_state.messages) - 1}"
+        )
 
         st.session_state.categories[message_key] = category
         with st.chat_message(last_message["role"]):
@@ -239,7 +247,19 @@ if prompt := st.chat_input("Ваше сообщение"):
                 col1, col2 = st.columns([1, 10])
                 with col1:
                     if st.button("👍", key=f"like_{message_key}"):
-                        set_rating(message_key, "like", last_message["content"], _content, category)
+                        set_rating(
+                            message_key,
+                            "like",
+                            last_message["content"],
+                            _content,
+                            category,
+                        )
                 with col2:
                     if st.button("👎", key=f"dislike_{message_key}"):
-                        set_rating(message_key, "dislike", last_message["content"], _content, category)
+                        set_rating(
+                            message_key,
+                            "dislike",
+                            last_message["content"],
+                            _content,
+                            category,
+                        )
