@@ -2,11 +2,17 @@ from flask import Flask, request, jsonify, redirect
 from functools import wraps
 import os
 import psycopg2
+from prometheus_flask_exporter import PrometheusMetrics
 from psycopg2 import sql
 from psycopg2.extras import RealDictCursor
 from flasgger import Swagger
 
 app = Flask(__name__)
+
+metrics = PrometheusMetrics(app)
+
+# static information as metric
+metrics.info('app_info', 'Application info', version='1.0.3')
 
 # Конфигурация Swagger
 app.config['SWAGGER'] = {
