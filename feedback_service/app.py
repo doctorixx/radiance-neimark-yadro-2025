@@ -47,7 +47,7 @@ API_TOKEN = os.getenv('API_TOKEN', 'default-secret-token')
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = request.headers.get('Authorization')
+        # token = request.headers.get('Authorization')
 
         # if not token or token != f'Bearer {API_TOKEN}':
         #     return jsonify({'message': 'Unauthorized'}), 401
