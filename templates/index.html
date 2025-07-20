@@ -59,6 +59,20 @@
         <div class="input-container">
             <div class="input-wrapper">
                 <textarea id="message-input" placeholder="Напишите ваше сообщение..." rows="1"></textarea>
+                <button id="stop-btn" class="btn btn-stop" title="Остановить генерацию" style="display: none;">
+                    ⏸
+                </button>
+            </div>
+        </div>
+
+        <!-- Предсказания вопросов -->
+        <div id="predictions-container" class="predictions-container" style="display: none;">
+            <div class="predictions-header">
+                <span class="predictions-title">💡 Возможные вопросы:</span>
+                <button id="close-predictions" class="close-predictions-btn" title="Закрыть (Esc)">✕</button>
+            </div>
+            <div id="predictions-list" class="predictions-list">
+                <!-- Предсказанные вопросы будут добавлены сюда -->
             </div>
         </div>
     </div>

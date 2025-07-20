@@ -7,6 +7,7 @@ class AIChat {
     constructor() {
         this.currentModel = 'qwen2.5:7b';
         this.isTyping = false;
+        this.abortController = null;
         this.elements = this.initializeElements();
         this.init();
     }
@@ -19,6 +20,10 @@ class AIChat {
             typingIndicator: document.getElementById('typing-indicator'),
             notificationsContainer: document.getElementById('notifications'),
             clearBtn: document.getElementById('clear-btn'),
+            stopBtn: document.getElementById('stop-btn'),
+            predictionsContainer: document.getElementById('predictions-container'),
+            predictionsList: document.getElementById('predictions-list'),
+            closePredictionsBtn: document.getElementById('close-predictions'),
             confirmModal: document.getElementById('confirm-modal'),
             confirmMessage: document.getElementById('confirm-message'),
             confirmOk: document.getElementById('confirm-ok'),
@@ -34,7 +39,7 @@ class AIChat {
     }
 
     setupEventListeners() {
-        const { messageInput, modelSelect, clearBtn } = this.elements;
+        const { messageInput, modelSelect, clearBtn, stopBtn, closePredictionsBtn, predictionsContainer } = this.elements;
 
         // Send message events
         messageInput.addEventListener('keydown', (e) => this.handleKeyDown(e));
@@ -45,6 +50,27 @@ class AIChat {
 
         // Clear conversation button
         clearBtn.addEventListener('click', () => this.handleClearClick());
+        
+        // Stop generation button
+        stopBtn.addEventListener('click', () => this.stopGeneration());
+        
+        // Close predictions button
+        closePredictionsBtn.addEventListener('click', () => this.hidePredictions());
+        
+        // Close predictions on Esc key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && predictionsContainer.style.display === 'block') {
+                this.hidePredictions();
+            }
+        });
+        
+        // Close predictions on click outside
+        document.addEventListener('click', (e) => {
+            if (predictionsContainer.style.display === 'block' && 
+                !predictionsContainer.contains(e.target)) {
+                this.hidePredictions();
+            }
+        });
     }
 
     handleKeyDown(event) {
@@ -77,6 +103,10 @@ class AIChat {
             messageInput.value = '';
             this.autoResizeTextarea();
             this.showTypingIndicator();
+            this.showStopButton();
+
+            // Создаём новый AbortController для этого запроса
+            this.abortController = new AbortController();
 
             const response = await this.callAPI('/send_message', {
                 method: 'POST',
@@ -85,42 +115,73 @@ class AIChat {
                     message,
                     model: this.currentModel
                 })
-            });
+            }, this.abortController.signal);
 
             if (response.success) {
-                this.addMessage(response.response, 'ai', response.response_time);
+                this.addMessage(response.response, 'ai', response.response_time, response.message_id);
+                // Загружаем новые предсказания после получения ответа
+                this.loadPredictions();
             } else {
                 this.addMessage(`❌ ${response.error}`, 'ai');
                 this.showNotification(`Error: ${response.error}`, 'error');
             }
         } catch (error) {
-            this.addMessage(`❌ Connection error: ${error.message}`, 'ai');
-            this.showNotification('Connection error', 'error');
+            if (error.name === 'AbortError') {
+                this.addMessage('⏹️ Генерация остановлена пользователем', 'ai');
+                this.showNotification('Генерация остановлена', 'info');
+            } else {
+                this.addMessage(`❌ Connection error: ${error.message}`, 'ai');
+                this.showNotification('Connection error', 'error');
+            }
         } finally {
             this.hideTypingIndicator();
+            this.hideStopButton();
+            this.abortController = null;
         }
     }
 
-    addMessage(content, type, responseTime = null) {
+    addMessage(content, type, responseTime = null, messageId = null, reaction = null) {
         const { messagesContainer } = this.elements;
         
-        const messageElement = this.createMessageElement(content, type, responseTime);
+        const messageElement = this.createMessageElement(content, type, responseTime, messageId, reaction);
         messagesContainer.appendChild(messageElement);
         
         this.scrollToBottom();
         this.highlightCode(messageElement);
         this.addCopyHandlers(messageElement);
+        
+        // Добавляем обработчики реакций только для AI сообщений
+        if (type === 'ai' && messageId) {
+            this.addReactionHandlers(messageElement, messageId);
+        }
     }
 
-    createMessageElement(content, type, responseTime) {
+    createMessageElement(content, type, responseTime, messageId = null, reaction = null) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
+        
+        const reactionButtons = type === 'ai' && messageId ? `
+            <div class="reaction-buttons" data-message-id="${messageId}">
+                <button class="reaction-btn like-btn ${reaction === 'like' ? 'active' : ''}" 
+                        data-reaction="like" title="Нравится">
+                    👍
+                </button>
+                <button class="reaction-btn dislike-btn ${reaction === 'dislike' ? 'active' : ''}" 
+                        data-reaction="dislike" title="Не нравится">
+                    👎
+                </button>
+            </div>
+        ` : '';
+        
         messageDiv.innerHTML = `
             <div class="message-avatar">${type === 'user' ? '👤' : '🤖'}</div>
             <div class="message-content">
                 ${this.processContent(content)}
-                <div class="message-time">
-                    ${this.formatTime(responseTime)}
+                <div class="message-footer">
+                    <div class="message-time">
+                        ${this.formatTime(responseTime)}
+                    </div>
+                    ${reactionButtons}
                 </div>
             </div>
         `;
@@ -219,6 +280,50 @@ class AIChat {
         });
     }
 
+    addReactionHandlers(messageElement, messageId) {
+        const reactionBtns = messageElement.querySelectorAll('.reaction-btn');
+        reactionBtns.forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const reaction = btn.getAttribute('data-reaction');
+                const wasActive = btn.classList.contains('active');
+                
+                // Деактивировать все кнопки реакций в этом сообщении
+                const allReactionBtns = messageElement.querySelectorAll('.reaction-btn');
+                allReactionBtns.forEach(b => b.classList.remove('active'));
+                
+                // Если кнопка не была активной, активируем её
+                const finalReaction = wasActive ? null : reaction;
+                if (!wasActive) {
+                    btn.classList.add('active');
+                }
+                
+                // Отправляем реакцию на сервер
+                await this.sendReaction(messageId, finalReaction);
+            });
+        });
+    }
+
+    async sendReaction(messageId, reaction) {
+        try {
+            const response = await this.callAPI('/add_reaction', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message_id: messageId,
+                    reaction: reaction
+                })
+            });
+
+            if (!response.success) {
+                console.error('Failed to send reaction:', response.error);
+                this.showNotification('Ошибка при отправке реакции', 'error');
+            }
+        } catch (error) {
+            console.error('Error sending reaction:', error);
+            this.showNotification('Ошибка при отправке реакции', 'error');
+        }
+    }
+
     async copyToClipboard(text) {
         try {
             await navigator.clipboard.writeText(text);
@@ -259,6 +364,21 @@ class AIChat {
         this.elements.typingIndicator.style.display = 'none';
     }
 
+    showStopButton() {
+        this.elements.stopBtn.style.display = 'flex';
+    }
+
+    hideStopButton() {
+        this.elements.stopBtn.style.display = 'none';
+    }
+
+    stopGeneration() {
+        if (this.abortController) {
+            this.abortController.abort();
+            this.showNotification('Остановка генерации...', 'info');
+        }
+    }
+
     scrollToBottom() {
         const { messagesContainer } = this.elements;
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -286,11 +406,86 @@ class AIChat {
             
             conversation.forEach(item => {
                 this.addMessage(item.user, 'user');
-                this.addMessage(item.assistant, 'ai', item.response_time);
+                this.addMessage(item.assistant, 'ai', item.response_time, item.message_id, item.reaction);
             });
+            
+            // Загружаем предсказания после загрузки диалога
+            this.loadPredictions();
         } catch (error) {
             console.error('Error loading conversation:', error);
         }
+    }
+
+    async loadPredictions() {
+        try {
+            console.log('🔮 Загружаем предсказания...');
+            const response = await this.callAPI('/get_predictions');
+            console.log('📡 Ответ сервера:', response);
+            
+            if (response.predictions && response.predictions.length > 0) {
+                console.log('✅ Показываем предсказания:', response.predictions);
+                this.showPredictions(response.predictions);
+            } else {
+                console.log('❌ Нет предсказаний, скрываем блок');
+                this.hidePredictions();
+            }
+        } catch (error) {
+            console.error('❌ Error loading predictions:', error);
+            this.hidePredictions();
+        }
+    }
+
+    showPredictions(predictions) {
+        const { predictionsContainer, predictionsList } = this.elements;
+        
+        // Очищаем предыдущие предсказания
+        predictionsList.innerHTML = '';
+        
+        // Типы вопросов с стилями (без эмодзи)
+        const questionTypes = [
+            { class: 'research', title: 'Исследовательский вопрос' },
+            { class: 'practical', title: 'Практический вопрос' },
+            { class: 'detailed', title: 'Подробный вопрос' },
+            { class: 'quick', title: 'Быстрый вопрос' },
+            { class: 'developing', title: 'Развивающий вопрос' }
+        ];
+        
+        // Создаём чипы для каждого предсказания
+        predictions.forEach((prediction, index) => {
+            const chip = document.createElement('div');
+            const type = questionTypes[index] || questionTypes[0];
+            
+            chip.className = `prediction-chip prediction-${type.class}`;
+            chip.title = type.title;
+            chip.textContent = prediction;
+            
+            chip.addEventListener('click', () => {
+                this.selectPrediction(prediction);
+            });
+            predictionsList.appendChild(chip);
+        });
+        
+        // Показываем контейнер
+        predictionsContainer.style.display = 'block';
+    }
+
+    hidePredictions() {
+        this.elements.predictionsContainer.style.display = 'none';
+    }
+
+    selectPrediction(prediction) {
+        const { messageInput } = this.elements;
+        
+        // Вставляем предсказание в поле ввода
+        messageInput.value = prediction;
+        messageInput.focus();
+        this.autoResizeTextarea();
+        
+        // Скрываем предсказания после выбора
+        this.hidePredictions();
+        
+        // Можно автоматически отправить сообщение или оставить пользователю возможность редактировать
+        // this.sendMessage(); // Раскомментировать для автоотправки
     }
 
     async clearConversation() {
@@ -298,6 +493,7 @@ class AIChat {
         try {
             await this.callAPI('/clear_conversation', { method: 'POST' });
             this.elements.messagesContainer.innerHTML = '';
+            this.hidePredictions(); // Скрываем предсказания при очистке
             this.showNotification('Conversation cleared', 'success');
         } catch (error) {
             this.showNotification('Error clearing conversation', 'error');
@@ -405,7 +601,12 @@ class AIChat {
     }
 
     async callAPI(endpoint, options = {}, signal = null) {
-        const response = await fetch(endpoint, { ...options, signal });
+        const fetchOptions = { ...options };
+        if (signal) {
+            fetchOptions.signal = signal;
+        }
+        
+        const response = await fetch(endpoint, fetchOptions);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }

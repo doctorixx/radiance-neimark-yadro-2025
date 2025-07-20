@@ -14,8 +14,10 @@ import logging
 import requests
 import json
 from datetime import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from dotenv import load_dotenv
+import threading
+from pathlib import Path
 
 # Load environment variables
 load_dotenv()
@@ -39,6 +41,249 @@ class ChatMessage:
     ai_response: str
     response_time: float
     model: str
+    message_id: str = None
+    reaction: Optional[str] = None  # 'like', 'dislike', or None
+
+class JSONStorage:
+    """JSON file storage for conversations"""
+    
+    def __init__(self, data_dir: str = "data"):
+        self.data_dir = Path(data_dir)
+        self.data_dir.mkdir(exist_ok=True)
+        self.conversations_file = self.data_dir / "conversations.json"
+        self._lock = threading.Lock()
+        logger.info(f"JSONStorage initialized with data directory: {self.data_dir}")
+    
+    def load_conversations(self) -> Dict[str, List[ChatMessage]]:
+        """Load conversations from JSON file"""
+        try:
+            if not self.conversations_file.exists():
+                logger.info("No existing conversations file found, starting fresh")
+                return {}
+            
+            with self._lock:
+                with open(self.conversations_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                conversations = {}
+                for session_id, messages_data in data.items():
+                    conversations[session_id] = [
+                        ChatMessage(**msg_data) for msg_data in messages_data
+                    ]
+                
+                logger.info(f"Loaded {len(conversations)} conversation sessions from storage")
+                return conversations
+                
+        except Exception as e:
+            logger.error(f"Error loading conversations: {e}", exc_info=True)
+            return {}
+    
+    def save_conversations(self, conversations: Dict[str, List[ChatMessage]]) -> None:
+        """Save conversations to JSON file"""
+        try:
+            data = {}
+            for session_id, messages in conversations.items():
+                data[session_id] = [asdict(msg) for msg in messages]
+            
+            with self._lock:
+                # Atomic write using temporary file
+                temp_file = self.conversations_file.with_suffix('.tmp')
+                with open(temp_file, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                
+                # Replace original file
+                temp_file.replace(self.conversations_file)
+            
+            logger.debug(f"Saved {len(conversations)} conversation sessions to storage")
+            
+        except Exception as e:
+            logger.error(f"Error saving conversations: {e}", exc_info=True)
+
+class ExternalAPIService:
+    """Service for sending data to external API"""
+    
+    API_URL = "http://192.168.44.157:5000"
+    
+    @classmethod
+    def send_feedback_data(cls, user_query: str, ai_answer: str, reaction: Optional[str]) -> bool:
+        """Send feedback data to external API"""
+        try:
+            # Определяем score на основе реакции
+            score = 0
+            if reaction == 'like':
+                score = 1
+            elif reaction == 'dislike':
+                score = -1
+            
+            payload = {
+                "answer": ai_answer,
+                "category": "chat",  # Можно настроить категорию
+                "score": score,
+                "user_query": user_query,
+                "version": "1.0"  # Версия приложения
+            }
+            
+            headers = {
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.post(
+                cls.API_URL,
+                json=payload,
+                headers=headers,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"Successfully sent feedback data to external API")
+                return True
+            else:
+                logger.warning(f"External API returned status {response.status_code}: {response.text}")
+                return False
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error sending data to external API: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error sending to external API: {e}")
+            return False
+
+class MistralPredictionService:
+    """Service for predicting next user questions using Mistral API"""
+    
+    MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions"
+    
+    @classmethod
+    def get_api_key(cls) -> Optional[str]:
+        """Get Mistral API key from environment"""
+        return os.getenv("MISTRAL_API_KEY")
+    
+    @classmethod
+    def is_configured(cls) -> bool:
+        """Check if Mistral API is properly configured"""
+        return bool(cls.get_api_key())
+    
+    @classmethod
+    def predict_next_questions(cls, conversation_history: List[ChatMessage]) -> List[str]:
+        """Predict next questions based on conversation history"""
+        logger.info(f"Predicting questions for {len(conversation_history)} messages")
+        
+        if not cls.is_configured():
+            logger.warning("Mistral API key not configured")
+            return []
+        
+        if len(conversation_history) == 0:
+            # Если нет истории, предлагаем стандартные вопросы
+            logger.info("No history, returning default questions")
+            return [
+                "Как дела?",
+                "Расскажи о себе",
+                "Помоги с задачей"
+            ]
+        
+        try:
+            # Строим контекст из последних сообщений
+            context = cls._build_context(conversation_history)
+            
+            system_prompt = """Ты - эксперт по анализу диалогов. Твоя задача - предсказать 5 следующих вопросов пользователя разных типов на основе истории диалога.
+
+Типы вопросов:
+1. ИССЛЕДОВАТЕЛЬСКИЙ - глубокий, аналитический вопрос
+2. ПРАКТИЧЕСКИЙ - как применить, использовать  
+3. ПОДРОБНЫЙ - запрос деталей, объяснений
+4. БЫСТРЫЙ - короткий, конкретный вопрос
+5. РАЗВИВАЮЩИЙ - логическое продолжение темы
+
+Правила:
+- Анализируй логический ход разговора
+- Учитывай интересы и контекст пользователя
+- Каждый вопрос должен быть в своём стиле
+- Вопросы должны быть короткими (до 60 символов)
+- Отвечай ТОЛЬКО JSON массивом из 5 строк, без дополнительного текста
+
+Пример ответа:
+["Как это влияет на производительность?", "Покажи код", "Расскажи подробнее про алгоритм", "Работает?", "А что насчёт безопасности?"]"""
+
+            user_prompt = f"История диалога:\n{context}\n\nПредскажи 5 следующих вопросов пользователя разных типов (исследовательский, практический, подробный, быстрый, развивающий):"
+            
+            payload = {
+                "model": "mistral-small-latest",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 200
+            }
+            
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {cls.get_api_key()}"
+            }
+            
+            response = requests.post(
+                cls.MISTRAL_API_URL,
+                json=payload,
+                headers=headers,
+                timeout=15
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                content = data['choices'][0]['message']['content'].strip()
+                logger.info(f"Raw Mistral response: {content}")
+                
+                # Парсим JSON ответ
+                try:
+                    predictions = json.loads(content)
+                    if isinstance(predictions, list) and len(predictions) > 0:
+                        logger.info(f"Generated {len(predictions)} question predictions")
+                        return predictions[:5]  # Берём максимум 5
+                    else:
+                        logger.warning("Invalid predictions format from Mistral")
+                        return []
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse Mistral JSON: {e}")
+                    logger.error(f"Content was: {content}")
+                    # Fallback - пытаемся извлечь массив из текста
+                    if '[' in content and ']' in content:
+                        try:
+                            start = content.find('[')
+                            end = content.rfind(']') + 1
+                            json_part = content[start:end]
+                            predictions = json.loads(json_part)
+                            if isinstance(predictions, list):
+                                logger.info(f"Extracted {len(predictions)} predictions from text")
+                                return predictions[:5]
+                        except:
+                            pass
+                    return []
+            else:
+                logger.error(f"Mistral API error: {response.status_code} - {response.text}")
+                return []
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error calling Mistral API: {e}")
+            return []
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse Mistral response as JSON: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Unexpected error in question prediction: {e}")
+            return []
+    
+    @classmethod
+    def _build_context(cls, messages: List[ChatMessage]) -> str:
+        """Build context string from recent messages"""
+        # Берём последние 5 сообщений для контекста
+        recent_messages = messages[-5:] if len(messages) > 5 else messages
+        
+        context_parts = []
+        for msg in recent_messages:
+            context_parts.append(f"Пользователь: {msg.user_message}")
+            context_parts.append(f"AI: {msg.ai_response[:200]}...")  # Обрезаем длинные ответы
+        
+        return "\n".join(context_parts)
 
 class LangflowAgentService:
     """Service for interacting with Langflow Agent"""
@@ -135,29 +380,38 @@ class LangflowAgentService:
             return False, f"Error: {str(e)}", time.time() - start_time
 
 class ConversationManager:
-    """Manages conversation sessions"""
+    """Manages conversation sessions with JSON storage"""
     
-    def __init__(self):
-        self.conversations: Dict[str, List[ChatMessage]] = {}
-        logger.info("ConversationManager initialized")
+    def __init__(self, storage: JSONStorage):
+        self.storage = storage
+        self.conversations: Dict[str, List[ChatMessage]] = self.storage.load_conversations()
+        logger.info(f"ConversationManager initialized with {len(self.conversations)} existing sessions")
+    
+    def _save_to_storage(self) -> None:
+        """Save current conversations to storage"""
+        self.storage.save_conversations(self.conversations)
     
     def add_message(self, session_id: str, user_msg: str, ai_response: str, 
-                   response_time: float, model: str) -> None:
+                   response_time: float, model: str) -> str:
         """Add message to conversation"""
         if session_id not in self.conversations:
             logger.debug(f"New conversation session started: {session_id}")
             self.conversations[session_id] = []
         
+        message_id = str(uuid.uuid4())
         message = ChatMessage(
             timestamp=datetime.now().isoformat(),
             user_message=user_msg,
             ai_response=ai_response,
             response_time=response_time,
-            model=model
+            model=model,
+            message_id=message_id
         )
         
         self.conversations[session_id].append(message)
-        logger.debug(f"Message added to session {session_id}")
+        self._save_to_storage()  # Auto-save after adding message
+        logger.debug(f"Message added to session {session_id} and saved to storage")
+        return message_id
     
     def get_conversation(self, session_id: str) -> List[Dict]:
         """Get conversation history"""
@@ -170,16 +424,50 @@ class ConversationManager:
                 'user': msg.user_message,
                 'assistant': msg.ai_response,
                 'response_time': msg.response_time,
-                'model': msg.model
+                'model': msg.model,
+                'message_id': msg.message_id,
+                'reaction': msg.reaction
             }
             for msg in self.conversations[session_id]
         ]
+    
+    def add_reaction(self, session_id: str, message_id: str, reaction: str) -> bool:
+        """Add reaction to a message"""
+        if session_id not in self.conversations:
+            return False
+        
+        for message in self.conversations[session_id]:
+            if message.message_id == message_id:
+                # Сохраняем реакцию локально
+                message.reaction = reaction if reaction in ['like', 'dislike'] else None
+                self._save_to_storage()  # Auto-save after reaction change
+                
+                # Отправляем данные на внешний API параллельно (в фоне)
+                threading.Thread(
+                    target=self._send_to_external_api,
+                    args=(message.user_message, message.ai_response, message.reaction),
+                    daemon=True
+                ).start()
+                
+                logger.info(f"Reaction '{reaction}' added to message {message_id} in session {session_id} and saved")
+                return True
+        
+        return False
+    
+    def _send_to_external_api(self, user_query: str, ai_answer: str, reaction: Optional[str]) -> None:
+        """Send data to external API in background thread"""
+        success = ExternalAPIService.send_feedback_data(user_query, ai_answer, reaction)
+        if success:
+            logger.debug("Data successfully sent to external API")
+        else:
+            logger.warning("Failed to send data to external API (will continue with local storage)")
     
     def clear_conversation(self, session_id: str) -> None:
         """Clear conversation history"""
         if session_id in self.conversations:
             self.conversations[session_id] = []
-            logger.info(f"Conversation cleared for session {session_id}")
+            self._save_to_storage()  # Auto-save after clearing
+            logger.info(f"Conversation cleared for session {session_id} and saved to storage")
     
     def get_messages(self, session_id: str) -> List[ChatMessage]:
         """Get raw messages for prompt building"""
@@ -192,7 +480,10 @@ logger.info("Flask application initialized")
 
 # Initialize services
 langflow_service = LangflowAgentService()
-conversation_manager = ConversationManager()
+json_storage = JSONStorage()
+external_api_service = ExternalAPIService()
+mistral_service = MistralPredictionService()
+conversation_manager = ConversationManager(json_storage)
 
 @app.route('/')
 def index():
@@ -241,14 +532,15 @@ def send_message():
         )
         
         if success:
-            conversation_manager.add_message(
+            message_id = conversation_manager.add_message(
                 session_id, message, response, response_time, model
             )
             logger.info(f"Message processed successfully in {response_time:.2f}s")
             return jsonify({
                 'success': True,
                 'response': response,
-                'response_time': response_time
+                'response_time': response_time,
+                'message_id': message_id
             })
         else:
             logger.error(f"Failed to process message: {response}")
@@ -292,12 +584,71 @@ def clear_conversation():
         logger.error(f"Error in clear_conversation: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/add_reaction', methods=['POST'])
+def add_reaction():
+    """Add reaction to a message"""
+    try:
+        data = request.get_json()
+        message_id = data.get('message_id')
+        reaction = data.get('reaction')  # 'like', 'dislike', or None
+        session_id = session.get('session_id')
+        
+        if not message_id:
+            return jsonify({'success': False, 'error': 'Missing message_id'}), 400
+        
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session ID'}), 400
+        
+        success = conversation_manager.add_reaction(session_id, message_id, reaction)
+        
+        if success:
+            logger.info(f"Reaction '{reaction}' added to message {message_id}")
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Message not found'}), 404
+            
+    except Exception as e:
+        logger.error(f"Error in add_reaction: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/get_predictions')
+def get_predictions():
+    """Get predicted next questions"""
+    try:
+        session_id = session.get('session_id')
+        logger.info(f"Get predictions request for session: {session_id}")
+        
+        if not session_id:
+            logger.warning("No session ID found")
+            return jsonify({'predictions': []})
+        
+        # Получаем историю диалога для данной сессии
+        conversation_history = conversation_manager.get_messages(session_id)
+        logger.info(f"Conversation history length: {len(conversation_history)}")
+        
+        # Генерируем предсказания
+        predictions = mistral_service.predict_next_questions(conversation_history)
+        logger.info(f"Generated predictions: {predictions}")
+        
+        result = {
+            'predictions': predictions,
+            'mistral_configured': mistral_service.is_configured()
+        }
+        logger.info(f"Sending response: {result}")
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error in get_predictions: {e}", exc_info=True)
+        return jsonify({'predictions': [], 'error': str(e)})
+
 @app.route('/check_status')
 def check_status():
     """Check Langflow status"""
     try:
         status = {
             'langflow_configured': langflow_service.is_configured(),
+            'mistral_configured': mistral_service.is_configured(),
             'models': ["Langflow Agent"]
         }
         return jsonify(status)
