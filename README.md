@@ -49,7 +49,21 @@ pip instal -r requirements
 python3 app.py
 ```
 ## Frontendback service
-
+ - Перейти в директорию /streamlit
+ - Создать виртуальное окружение venv
+ - Установить зависимости
+   ```shell
+   pip install requirements.txt
+   ```
+ - Добавить конфигурационный файл config.env со следующими данными
+LANGFLOW_API_KEY=<<КЛЮЧ API LANGFLOW>>
+YADRO_FLOW=<<Имя flow для RAG>>
+CATEGORY_FLOW=<<Имя flow для Category>>
+FEEDBACK_TOKEN=default-secret-token
+ - Запустить проект
+```shell
+streamlit run main.py
+```
 
 ## LangFlow
 Для запуска RAG-хранилища:
