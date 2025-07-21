@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Chat Bot - Lokalna AI s Vectornou Pamätou</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🤖 RAG Chat Bot</h1>
+                <div class="status-info">
+                    <div class="status-item">
+                        <span class="status-label">LLM:</span>
+                        <span id="llm-status" class="status-value">Проверка...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Документы:</span>
+                        <span id="docs-status" class="status-value">Загрузка...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Память:</span>
+                        <span id="memory-status" class="status-value">0 сообщений</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Controls -->
+            <div class="controls">
+                <select id="model-select" class="model-select">
+                    <option value="mistral">Mistral</option>
+                </select>
+                <button id="refresh-docs-btn" class="btn btn-secondary">🔄 Обновить документы</button>
+                <button id="clear-chat-btn" class="btn btn-danger">🗑️ Очистить чат</button>
+            </div>
+        </header>
+
+        <!-- Chat Container -->
+        <main class="chat-container">
+            <div id="chat-messages" class="chat-messages">
+                <div class="welcome-message">
+                    <div class="welcome-content">
+                        <h2>👋 Добро пожаловать в RAG Chat Bot!</h2>
+                        <p>Этот чат-бот использует:</p>
+                        <ul>
+                            <li>🧠 <strong>Локальную модель Mistral</strong> через Ollama</li>
+                            <li>📚 <strong>RAG (поиск в документах)</strong> из папки data/docs/</li>
+                            <li>💾 <strong>Векторную память</strong> диалога</li>
+                            <li>🔍 <strong>FAISS поиск</strong> для релевантного контекста</li>
+                        </ul>
+                        <p>Добавьте документы (TXT, PDF, DOCX) в папку <code>data/docs/</code> и нажмите "Обновить документы".</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <div class="input-container">
+                    <textarea id="message-input" placeholder="Напишите ваше сообщение..." rows="1"></textarea>
+                    <button id="send-btn" class="send-btn" disabled>
+                        <span class="send-icon">📤</span>
+                    </button>
+                </div>
+                <div class="input-footer">
+                    <span class="session-info">Сессия: {{ session_id[:8] }}...</span>
+                    <span id="typing-indicator" class="typing-indicator" style="display: none;">AI печатает...</span>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Upload Modal -->
+    <div id="upload-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📄 Добавить текст в индекс</h3>
+                <button id="close-modal" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <textarea id="upload-text" placeholder="Вставьте текст для добавления в базу знаний..." rows="10"></textarea>
+                <input type="text" id="upload-source" placeholder="Название источника (опционально)" class="source-input">
+            </div>
+            <div class="modal-footer">
+                <button id="upload-btn" class="btn btn-primary">Добавить текст</button>
+                <button id="cancel-upload" class="btn btn-secondary">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let isProcessing = false;
+        const sessionId = "{{ session_id }}";
+        
+        // DOM elements
+        const chatMessages = document.getElementById('chat-messages');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const modelSelect = document.getElementById('model-select');
+        const clearChatBtn = document.getElementById('clear-chat-btn');
+        const refreshDocsBtn = document.getElementById('refresh-docs-btn');
+        
+        // Status elements
+        const llmStatus = document.getElementById('llm-status');
+        const docsStatus = document.getElementById('docs-status');
+        const memoryStatus = document.getElementById('memory-status');
+        const typingIndicator = document.getElementById('typing-indicator');
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadConversation();
+            checkSystemStatus();
+            setupEventListeners();
+            
+            // Auto-resize textarea
+            messageInput.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+                updateSendButton();
+            });
+        });
+
+        function setupEventListeners() {
+            // Send message
+            sendBtn.addEventListener('click', sendMessage);
+            messageInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            // Clear chat
+            clearChatBtn.addEventListener('click', clearChat);
+            
+            // Refresh documents
+            refreshDocsBtn.addEventListener('click', refreshDocuments);
+            
+            // Update send button state
+            messageInput.addEventListener('input', updateSendButton);
+        }
+
+        function updateSendButton() {
+            const hasText = messageInput.value.trim().length > 0;
+            sendBtn.disabled = !hasText || isProcessing;
+        }
+
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message || isProcessing) return;
+
+            isProcessing = true;
+            updateSendButton();
+            showTypingIndicator();
+
+            // Add user message to chat
+            addMessageToChat('user', message);
+            messageInput.value = '';
+            messageInput.style.height = 'auto';
+
+            try {
+                const response = await fetch('/send_message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        model: modelSelect.value
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    addMessageToChat('assistant', data.response, {
+                        response_time: data.response_time,
+                        context_info: data.context_info
+                    });
+                    updateMemoryStatus();
+                } else {
+                    addMessageToChat('error', data.error || 'Произошла ошибка');
+                }
+            } catch (error) {
+                addMessageToChat('error', 'Ошибка соединения: ' + error.message);
+            } finally {
+                isProcessing = false;
+                updateSendButton();
+                hideTypingIndicator();
+            }
+        }
+
+        function addMessageToChat(role, content, metadata = {}) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}-message`;
+
+            let messageContent = `<div class="message-content">${formatMessage(content)}</div>`;
+            
+            if (metadata.response_time !== undefined) {
+                const contextInfo = metadata.context_info || {};
+                messageContent += `
+                    <div class="message-meta">
+                        <span class="response-time">⏱️ ${metadata.response_time.toFixed(2)}s</span>
+                        ${contextInfo.context_used ? 
+                            `<span class="context-used">🧠 Контекст: ${contextInfo.documents_found} док., ${contextInfo.memory_context_found} воспоминаний</span>` 
+                            : '<span class="no-context">💭 Без контекста</span>'
+                        }
+                    </div>
+                `;
+            }
+
+            messageDiv.innerHTML = messageContent;
+            
+            // Remove welcome message if exists
+            const welcomeMessage = chatMessages.querySelector('.welcome-message');
+            if (welcomeMessage) {
+                welcomeMessage.remove();
+            }
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function formatMessage(text) {
+            // Basic markdown-like formatting
+            return text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/`(.*?)`/g, '<code>$1</code>')
+                .replace(/\n/g, '<br>');
+        }
+
+        function showTypingIndicator() {
+            typingIndicator.style.display = 'inline';
+        }
+
+        function hideTypingIndicator() {
+            typingIndicator.style.display = 'none';
+        }
+
+        async function clearChat() {
+            if (!confirm('Очистить историю чата и память?')) return;
+
+            try {
+                const response = await fetch('/clear_conversation', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    chatMessages.innerHTML = '';
+                    updateMemoryStatus();
+                    // Add welcome message back
+                    location.reload();
+                }
+            } catch (error) {
+                console.error('Error clearing chat:', error);
+            }
+        }
+
+        async function refreshDocuments() {
+            refreshDocsBtn.disabled = true;
+            refreshDocsBtn.textContent = '🔄 Обновление...';
+
+            try {
+                const response = await fetch('/refresh_documents', {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    checkSystemStatus();
+                    alert('✅ ' + data.message);
+                } else {
+                    alert('❌ Ошибка: ' + data.error);
+                }
+            } catch (error) {
+                alert('❌ Ошибка обновления: ' + error.message);
+            } finally {
+                refreshDocsBtn.disabled = false;
+                refreshDocsBtn.textContent = '🔄 Обновить документы';
+            }
+        }
+
+        async function checkSystemStatus() {
+            try {
+                const response = await fetch('/check_status');
+                const status = await response.json();
+
+                // Update LLM status
+                llmStatus.textContent = status.llm_available ? 
+                    `✅ Доступно (${status.available_models.length} моделей)` : 
+                    '❌ Недоступно';
+                llmStatus.className = `status-value ${status.llm_available ? 'status-ok' : 'status-error'}`;
+
+                // Update documents status
+                const docs = status.documents_loaded;
+                docsStatus.textContent = `📚 ${docs.total_chunks} фрагментов из ${docs.unique_files} файлов`;
+                docsStatus.className = 'status-value';
+
+                // Update model select
+                if (status.available_models.length > 0) {
+                    modelSelect.innerHTML = status.available_models
+                        .map(model => `<option value="${model}">${model}</option>`)
+                        .join('');
+                }
+
+                updateMemoryStatus();
+
+            } catch (error) {
+                console.error('Error checking status:', error);
+            }
+        }
+
+        async function updateMemoryStatus() {
+            try {
+                const response = await fetch('/memory_stats');
+                const stats = await response.json();
+                
+                memoryStatus.textContent = `💾 ${stats.total_messages || 0} сообщений`;
+            } catch (error) {
+                console.error('Error updating memory status:', error);
+            }
+        }
+
+        async function loadConversation() {
+            try {
+                const response = await fetch('/get_conversation');
+                const conversation = await response.json();
+
+                conversation.forEach(msg => {
+                    addMessageToChat('user', msg.user);
+                    addMessageToChat('assistant', msg.assistant, {
+                        response_time: msg.response_time,
+                        context_info: {
+                            context_used: msg.context_used,
+                            documents_found: msg.documents_found
+                        }
+                    });
+                });
+            } catch (error) {
+                console.error('Error loading conversation:', error);
+            }
+        }
+
+        // Periodic status updates
+        setInterval(updateMemoryStatus, 30000); // Update every 30 seconds
+    </script>
+</body>
+</html> 

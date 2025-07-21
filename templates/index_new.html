@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 RAG Chat Bot - Новая система</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .stats {
+            background: #f8f9fa;
+            padding: 15px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+        }
+
+        .stat-item {
+            text-align: center;
+            margin: 5px;
+        }
+
+        .stat-number {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #2a5298;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+
+        .main-content {
+            display: flex;
+            min-height: 600px;
+        }
+
+        .chat-section {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #dee2e6;
+        }
+
+        .search-section {
+            flex: 1;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            max-height: 400px;
+            background: #fff;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 80%;
+        }
+
+        .user-message {
+            background: #e3f2fd;
+            margin-left: auto;
+            text-align: right;
+        }
+
+        .ai-message {
+            background: #f1f8e9;
+            margin-right: auto;
+        }
+
+        .message-time {
+            font-size: 0.8em;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+
+        .chat-input-section {
+            padding: 20px;
+            border-top: 1px solid #dee2e6;
+            background: #f8f9fa;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .input-group input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+        }
+
+        .input-group input:focus {
+            border-color: #2a5298;
+            box-shadow: 0 0 5px rgba(42, 82, 152, 0.3);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #2a5298 0%, #1e3c72 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(42, 82, 152, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .search-box {
+            margin-bottom: 20px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        .search-results {
+            background: white;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 10px;
+            border: 1px solid #dee2e6;
+        }
+
+        .search-result-item {
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #2a5298;
+        }
+
+        .result-score {
+            font-weight: bold;
+            color: #2a5298;
+            font-size: 0.9em;
+        }
+
+        .result-text {
+            margin-top: 5px;
+            font-size: 0.9em;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border: 1px solid #f5c6cb;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border: 1px solid #c3e6cb;
+        }
+
+        .add-document-section {
+            margin-top: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+
+        .add-document-section textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            resize: vertical;
+            min-height: 100px;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .search-section {
+                border-right: none;
+                border-top: 1px solid #dee2e6;
+            }
+            
+            .stats {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 RAG Chat Bot</h1>
+            <p>Новая система: {{ rag_type }}</p>
+        </div>
+
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-number" id="doc-count">{{ stats.total_documents or 0 }}</div>
+                <div class="stat-label">Документов</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="vocab-size">{{ stats.vocabulary_size or 0 }}</div>
+                <div class="stat-label">Слов в словаре</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="message-count">0</div>
+                <div class="stat-label">Сообщений</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{{ stats.method or rag_type }}</div>
+                <div class="stat-label">Метод</div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="chat-section">
+                <div class="chat-messages" id="chat-messages">
+                    <div class="ai-message message">
+                        <div>👋 Привет! Я RAG Chat Bot с новой системой поиска. Задавайте вопросы о программировании, машинном обучении и технологиях!</div>
+                        <div class="message-time">Система готова</div>
+                    </div>
+                </div>
+
+                <div class="chat-input-section">
+                    <div class="input-group">
+                        <input type="text" id="user-input" placeholder="Введите ваш вопрос..." maxlength="500">
+                        <button class="btn btn-primary" onclick="sendMessage()">Отправить</button>
+                        <button class="btn btn-secondary" onclick="clearChat()">Очистить</button>
+                    </div>
+                    <div class="loading" id="loading">
+                        🔄 Генерирую ответ...
+                    </div>
+                </div>
+            </div>
+
+            <div class="search-section">
+                <h3>🔍 Поиск документов</h3>
+                <div class="search-box">
+                    <input type="text" id="search-input" placeholder="Поиск в базе знаний...">
+                    <button class="btn btn-primary" onclick="searchDocuments()">Найти</button>
+                </div>
+                <div id="search-results"></div>
+
+                <div class="add-document-section">
+                    <h4>📝 Добавить документ</h4>
+                    <textarea id="new-document" placeholder="Введите текст нового документа..."></textarea>
+                    <button class="btn btn-primary" onclick="addDocument()">Добавить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let messageCount = 0;
+
+        // Отправка сообщения в чат
+        async function sendMessage() {
+            const input = document.getElementById('user-input');
+            const message = input.value.trim();
+            
+            if (!message) return;
+
+            // Добавляем сообщение пользователя
+            addMessage(message, 'user');
+            input.value = '';
+            
+            // Показываем загрузку
+            document.getElementById('loading').style.display = 'block';
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Добавляем ответ AI
+                    addMessage(data.response, 'ai', {
+                        time: data.response_time,
+                        docs: data.documents_found
+                    });
+                    updateMessageCount();
+                } else {
+                    addMessage('Ошибка: ' + (data.error || 'Неизвестная ошибка'), 'ai');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('Ошибка соединения с сервером', 'ai');
+            }
+
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        // Добавление сообщения в чат
+        function addMessage(text, sender, meta = {}) {
+            const messagesDiv = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString();
+            
+            let metaInfo = '';
+            if (meta.time) {
+                metaInfo += ` • Время: ${meta.time}`;
+            }
+            if (meta.docs !== undefined) {
+                metaInfo += ` • Документов: ${meta.docs}`;
+            }
+            
+            messageDiv.innerHTML = `
+                <div>${text}</div>
+                <div class="message-time">${timeStr}${metaInfo}</div>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Поиск документов
+        async function searchDocuments() {
+            const input = document.getElementById('search-input');
+            const query = input.value.trim();
+            
+            if (!query) return;
+
+            try {
+                const response = await fetch('/search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ query: query, top_k: 5 })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    displaySearchResults(data);
+                } else {
+                    showError('Ошибка поиска: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Search error:', error);
+                showError('Ошибка соединения при поиске');
+            }
+        }
+
+        // Отображение результатов поиска
+        function displaySearchResults(data) {
+            const resultsDiv = document.getElementById('search-results');
+            
+            if (data.results.length === 0) {
+                resultsDiv.innerHTML = '<div class="error">Документы не найдены</div>';
+                return;
+            }
+            
+            let html = `<div class="search-results">
+                <h4>Результаты поиска (${data.total_found}, ${data.search_time})</h4>`;
+            
+            data.results.forEach((result, index) => {
+                const preview = result.text.length > 150 ? 
+                    result.text.substring(0, 150) + '...' : result.text;
+                
+                html += `<div class="search-result-item">
+                    <div class="result-score">Релевантность: ${result.score.toFixed(3)}</div>
+                    <div class="result-text">${preview}</div>
+                </div>`;
+            });
+            
+            html += '</div>';
+            resultsDiv.innerHTML = html;
+        }
+
+        // Добавление документа
+        async function addDocument() {
+            const textarea = document.getElementById('new-document');
+            const text = textarea.value.trim();
+            
+            if (!text) {
+                showError('Введите текст документа');
+                return;
+            }
+
+            try {
+                const response = await fetch('/add_document', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: text })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    textarea.value = '';
+                    showSuccess(data.message);
+                    updateStats(data.stats);
+                } else {
+                    showError('Ошибка добавления: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Add document error:', error);
+                showError('Ошибка соединения при добавлении');
+            }
+        }
+
+        // Очистка чата
+        async function clearChat() {
+            try {
+                await fetch('/clear_chat', { method: 'POST' });
+                
+                const messagesDiv = document.getElementById('chat-messages');
+                messagesDiv.innerHTML = `
+                    <div class="ai-message message">
+                        <div>👋 Чат очищен. Задавайте новые вопросы!</div>
+                        <div class="message-time">Система готова</div>
+                    </div>
+                `;
+                messageCount = 0;
+                updateMessageCount();
+            } catch (error) {
+                console.error('Clear chat error:', error);
+            }
+        }
+
+        // Обновление статистики
+        function updateStats(stats) {
+            if (stats.total_documents) {
+                document.getElementById('doc-count').textContent = stats.total_documents;
+            }
+            if (stats.vocabulary_size) {
+                document.getElementById('vocab-size').textContent = stats.vocabulary_size;
+            }
+        }
+
+        function updateMessageCount() {
+            messageCount++;
+            document.getElementById('message-count').textContent = messageCount;
+        }
+
+        // Показать ошибку
+        function showError(message) {
+            const resultsDiv = document.getElementById('search-results');
+            resultsDiv.innerHTML = `<div class="error">${message}</div>`;
+        }
+
+        // Показать успех
+        function showSuccess(message) {
+            const resultsDiv = document.getElementById('search-results');
+            resultsDiv.innerHTML = `<div class="success">${message}</div>`;
+        }
+
+        // Обработка Enter в полях ввода
+        document.getElementById('user-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        document.getElementById('search-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchDocuments();
+            }
+        });
+
+        // Загрузка статистики при старте
+        async function loadStats() {
+            try {
+                const response = await fetch('/stats');
+                const data = await response.json();
+                updateStats(data.system_stats);
+            } catch (error) {
+                console.error('Stats loading error:', error);
+            }
+        }
+
+        // Инициализация
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStats();
+        });
+    </script>
+</body>
+</html> 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Local AI</title>
+    <title>🤖 RAG Chat Bot - Local AI</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-dark.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-core.min.js"></script>
@@ -11,38 +11,67 @@
 </head>
 <body>
     <div class="container">
-        <!-- Заголовок -->
-        <!--
-        <header class="header">
-            <h1>Local AI</h1>
-            <div class="status">
-                {% if ollama_running %}
-                    <span class="status-online">🟢 Ollama работает</span>
-                {% else %}
-                    <span class="status-offline">🔴 Ollama не работает</span>
-                {% endif %}
+        <!-- GPU Status Bar -->
+        <div class="gpu-status-bar">
+            <div class="gpu-status-item">
+                <span class="gpu-icon">🖥️</span>
+                <span id="gpu-status">GPU: Проверка...</span>
             </div>
-        </header>
-        -->
+            <div class="gpu-status-item">
+                <span class="doc-icon">📚</span>
+                <span id="docs-status">Документы: Загрузка...</span>
+            </div>
+            <div class="gpu-status-item">
+                <span class="memory-icon">💾</span>
+                <span id="memory-status">Память: 0 сообщений</span>
+            </div>
+            <div class="gpu-status-item">
+                <span class="llm-icon">🧠</span>
+                <span id="llm-status">LLM: Проверка...</span>
+            </div>
+        </div>
 
         <!-- Панель управления -->
         <div class="controls">
             <div class="model-selector">
                 <label for="model-select">Модель:</label>
                 <select id="model-select">
-                    {% for model in models %}
-                        <option value="{{ model }}">{{ model }}</option>
-                    {% endfor %}
+                    <option value="mistral">mistral</option>
+                    <option value="mistral-api">mistral-api</option>
+                    <option value="mistral-small">mistral-small</option>
+                    <option value="mistral-medium">mistral-medium</option>
+                    <option value="mistral-large">mistral-large</option>
                 </select>
             </div>
+            <button id="refresh-docs-btn" class="btn btn-primary" title="Обновить документы">
+                <img src="/static/images/refresh.png" alt="Обновить" style="width:18px;height:18px;" onerror="this.style.display='none'; this.nextSibling.style.display='inline';">
+                <span style="display:none;">🔄</span>
+            </button>
             <button id="clear-btn" class="btn btn-secondary clear-btn" title="Очистить чат">
-                <img src="/static/images/bucket.png" alt="Очистить" style="width:18px;height:18px;">
+                <img src="/static/images/bucket.png" alt="Очистить" style="width:18px;height:18px;" onerror="this.style.display='none'; this.nextSibling.style.display='inline';">
+                <span style="display:none;">🗑️</span>
             </button>
         </div>
 
         <!-- Область чата -->
         <div class="chat-container">
-            <div id="messages" class="messages"></div>
+            <div id="messages" class="messages">
+                <!-- Приветственное сообщение -->
+                <div class="welcome-message">
+                    <div class="welcome-avatar">🤖</div>
+                    <div class="welcome-content">
+                        <h3>Добро пожаловать в RAG Chat Bot!</h3>
+                        <p>Этот чат-бот использует:</p>
+                        <ul>
+                            <li>🧠 <strong>Локальную/облачную модель Mistral</strong></li>
+                            <li>📚 <strong>RAG поиск в документах</strong></li>
+                            <li>💾 <strong>Векторную память диалога</strong></li>
+                            <li>🚀 <strong>GPU ускорение (RTX 4060)</strong></li>
+                        </ul>
+                        <p>Добавьте документы в папку <code>data/docs/</code> и нажмите кнопку обновления!</p>
+                    </div>
+                </div>
+            </div>
             
             <!-- Индикатор печати -->
             <div id="typing-indicator" class="typing-indicator" style="display: none;">
@@ -69,7 +98,7 @@
     <!-- Модальное окно подтверждения -->
     <div id="confirm-modal" class="modal hidden">
         <div class="modal-content">
-            <p id="confirm-message">Вы уверены?</p>
+            <p id="confirm-message">Очистить историю чата и векторную память?</p>
             <div class="modal-actions">
                 <button id="confirm-ok" class="btn btn-danger">Очистить</button>
                 <button id="confirm-cancel" class="btn btn-secondary">Отмена</button>
@@ -77,6 +106,13 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <!-- Передача данных в JavaScript -->
+    <script>
+        window.APP_CONFIG = {
+            sessionId: "{{ session_id }}",
+            hasSystemStatus: true
+        };
+    </script>
+    <script src="{{ url_for('static', filename='rag-chat.js') }}"></script>
 </body>
 </html> 
